@@ -12,6 +12,8 @@ logger = logging.getLogger('crawler')
 
 def _run_crawl(project, session):
     """Запускается в отдельном потоке."""
+    from django.db import close_old_connections
+    close_old_connections()  # Django DB connections don't transfer to new threads
     from .engine import crawl_site
     try:
         count = crawl_site(project, session)

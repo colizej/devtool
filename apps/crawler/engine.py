@@ -24,12 +24,24 @@ MAX_PAGES = 500          # лимит страниц за сессию
 
 
 def _get_robots(base_url: str) -> RobotFileParser:
+    """Fetch robots.txt via httpx (respects verify=False) and parse manually.
+    Falls back to allow-all if the file can't be fetched."""
     rp = RobotFileParser()
-    rp.set_url(urljoin(base_url, '/robots.txt'))
+    robots_url = urljoin(base_url, '/robots.txt')
+    rp.set_url(robots_url)
     try:
-        rp.read()
+        resp = httpx.get(robots_url, headers=HEADERS, timeout=10,
+                         follow_redirects=True, verify=False)
+        if resp.status_code == 200:
+            rp.parse(resp.text.splitlines())
+        elif resp.status_code in (401, 403):
+            rp.disallow_all = True
+        else:
+            # 404 or other non-blocking code → allow all
+            rp.allow_all = True
     except Exception:
-        pass
+        # Network error → allow all (we own the site)
+        rp.allow_all = True
     return rp
 
 
@@ -141,8 +153,8 @@ def crawl_site(project, session) -> int:
                 continue
             visited.add(url)
 
-            # Respect robots.txt
-            if not robots.can_fetch(HEADERS['User-Agent'], url):
+            # Respect robots.txt (check against '*' wildcard — standard for most sites)
+            if not robots.can_fetch('*', url):
                 logger.debug('robots.txt blocked: %s', url)
                 continue
 
