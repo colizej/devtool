@@ -152,6 +152,11 @@ def project_detail(request, slug):
         if row['cnt'] > 0
     ]
 
+    # Crawler
+    from apps.crawler.models import CrawlSession, CrawlResult
+    crawl_session = CrawlSession.objects.filter(project=project).first()
+    crawl_results = CrawlResult.objects.filter(session=crawl_session) if crawl_session else []
+
     return render(request, 'projects/detail.html', {
         'project': project,
         'connected': connected,
@@ -188,4 +193,7 @@ def project_detail(request, slug):
         'ga4_chart_sessions': ga4_chart_sessions,
         'ga4_chart_users': ga4_chart_users,
         'ga4_chart_pageviews': ga4_chart_pageviews,
+        # Crawler
+        'crawl_session': crawl_session,
+        'crawl_results': crawl_results,
     })

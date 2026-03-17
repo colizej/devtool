@@ -407,11 +407,146 @@
     {% endif %}
 
     {% else %}
+
+    {% if active_tab == 'crawler' %}
+    <!-- ── Crawler ──────────────────────────────────────── -->
+    <div class="flex items-center justify-between mb-6">
+      <h3 class="text-base font-semibold text-gray-800">Технический SEO Crawler</h3>
+      <form method="post" action="{% url 'crawler:crawl_start' project.pk %}">
+        {% csrf_token %}
+        <button type="submit"
+          {% if crawl_session and crawl_session.status == 'running' %}disabled{% endif %}
+          class="inline-flex items-center gap-1 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          🕷 {% if crawl_session and crawl_session.status == 'running' %}Краулер работает…{% else %}Запустить Crawler{% endif %}
+        </button>
+      </form>
+    </div>
+
+    {% if crawl_session %}
+    {# ── Статус сессии ── #}
+    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-wrap gap-6 text-sm">
+      <div>
+        <span class="text-gray-400">Статус</span>
+        <span class="ml-2 px-2 py-0.5 rounded-full text-xs font-medium
+          {% if crawl_session.status == 'done' %}bg-green-100 text-green-700
+          {% elif crawl_session.status == 'running' %}bg-blue-100 text-blue-700
+          {% else %}bg-red-100 text-red-700{% endif %}">
+          {{ crawl_session.get_status_display }}
+        </span>
+      </div>
+      <div><span class="text-gray-400">Страниц пройдено</span> <strong class="ml-1">{{ crawl_session.pages_crawled }}</strong></div>
+      <div><span class="text-gray-400">Запущен</span> <span class="ml-1 text-gray-600">{{ crawl_session.started_at|date:"d.m.Y H:i" }}</span></div>
+      {% if crawl_session.duration_seconds %}<div><span class="text-gray-400">Время</span> <span class="ml-1 text-gray-600">{{ crawl_session.duration_seconds }}с</span></div>{% endif %}
+      {% if crawl_session.status == 'running' %}
+      <div class="text-blue-600 text-xs">↻ Обновите страницу для актуального статуса</div>
+      {% endif %}
+    </div>
+
+    {% if crawl_results %}
+    {# ── Summary Issues ── #}
+    {% with errors=0 warnings=0 %}
+    <div class="grid grid-cols-3 gap-4 mb-6">
+      <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold text-red-600">{{ crawl_results|length }}</div>
+        <div class="text-xs text-red-500 mt-1">Всего страниц</div>
+      </div>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold text-amber-600" id="warn-count">—</div>
+        <div class="text-xs text-amber-500 mt-1">Предупреждений</div>
+      </div>
+      <div class="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+        <div class="text-2xl font-bold text-green-600" id="ok-count">—</div>
+        <div class="text-xs text-green-500 mt-1">Без ошибок</div>
+      </div>
+    </div>
+    {% endwith %}
+
+    {# ── Таблица результатов ── #}
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div class="flex gap-2 p-3 border-b border-gray-100 flex-wrap">
+        <button onclick="filterCrawl('all')" id="f-all"
+          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-gray-900 text-white">Все</button>
+        <button onclick="filterCrawl('error')" id="f-error"
+          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-red-50">Ошибки</button>
+        <button onclick="filterCrawl('warning')" id="f-warning"
+          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-amber-50">Предупреждения</button>
+        <button onclick="filterCrawl('ok')" id="f-ok"
+          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-green-50">ОК</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm" id="crawl-table">
+          <thead>
+            <tr class="border-b border-gray-100 text-left text-gray-500 text-xs">
+              <th class="px-4 py-2 font-medium">URL</th>
+              <th class="px-4 py-2 font-medium text-center">Код</th>
+              <th class="px-4 py-2 font-medium">Title</th>
+              <th class="px-4 py-2 font-medium">H1</th>
+              <th class="px-4 py-2 font-medium text-right">Загрузка</th>
+              <th class="px-4 py-2 font-medium">Проблемы</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            {% for r in crawl_results %}
+            <tr class="hover:bg-gray-50 crawl-row" data-severity="{{ r.severity }}">
+              <td class="px-4 py-2 max-w-xs">
+                <a href="{{ r.url }}" target="_blank" rel="noopener"
+                   class="text-blue-600 hover:underline truncate block max-w-xs text-xs">{{ r.url }}</a>
+              </td>
+              <td class="px-4 py-2 text-center">
+                <span class="text-xs font-mono px-1.5 py-0.5 rounded
+                  {% if r.status_code >= 400 or not r.status_code %}bg-red-100 text-red-700
+                  {% elif r.status_code >= 300 %}bg-yellow-100 text-yellow-700
+                  {% else %}bg-green-100 text-green-700{% endif %}">
+                  {{ r.status_code|default:"—" }}
+                </span>
+              </td>
+              <td class="px-4 py-2 text-gray-700 max-w-xs">
+                <span class="truncate block max-w-[180px] text-xs" title="{{ r.title }}">
+                  {{ r.title|default:"—" }}
+                </span>
+              </td>
+              <td class="px-4 py-2 text-gray-700 max-w-xs">
+                <span class="truncate block max-w-[160px] text-xs" title="{{ r.h1 }}">
+                  {{ r.h1|default:"—" }}
+                </span>
+              </td>
+              <td class="px-4 py-2 text-right text-gray-500 text-xs">
+                {% if r.load_time_ms %}{{ r.load_time_ms }}мс{% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-2">
+                {% for sev, msg in r.issues_list %}
+                <span class="inline-block text-xs px-1.5 py-0.5 rounded mr-1 mb-0.5
+                  {% if sev == 'error' %}bg-red-100 text-red-700{% else %}bg-amber-100 text-amber-700{% endif %}">
+                  {{ msg }}
+                </span>
+                {% empty %}
+                <span class="text-xs text-green-600">✓</span>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}{# crawl_results #}
+
+    {% else %}
+    <div class="text-center py-10 text-gray-400">
+      <div class="text-4xl mb-3">🕷</div>
+      <p class="font-medium text-gray-600">Краулер ещё не запускался</p>
+      <p class="text-sm mt-1">Нажмите «Запустить Crawler» — будет проверено до 500 страниц</p>
+    </div>
+    {% endif %}{# crawl_session #}
+
+    {% else %}
     <div class="text-center py-12 text-gray-400">
       <div class="text-4xl mb-3">🚧</div>
       <p class="font-medium text-gray-500">В разработке</p>
       <p class="text-sm mt-1">Эта вкладка появится в следующих фазах</p>
     </div>
+    {% endif %}{# active_tab == crawler #}
+
     {% endif %}
     {% endif %}
 
@@ -573,6 +708,36 @@ if (ga4Ctx) {
     }
   });
 }
+</script>
+{% endif %}
+
+{% if active_tab == 'crawler' and crawl_results %}
+<script>
+function filterCrawl(type) {
+  document.querySelectorAll('.crawl-filter').forEach(b => {
+    b.className = 'crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600';
+  });
+  const active = document.getElementById('f-' + type);
+  if (active) active.className = 'crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-gray-900 text-white';
+
+  document.querySelectorAll('.crawl-row').forEach(row => {
+    row.style.display = (type === 'all' || row.dataset.severity === type) ? '' : 'none';
+  });
+}
+
+// Подсчёт warnings и ok
+document.addEventListener('DOMContentLoaded', () => {
+  const rows = document.querySelectorAll('.crawl-row');
+  let warn = 0, ok = 0;
+  rows.forEach(r => {
+    if (r.dataset.severity === 'warning') warn++;
+    else if (r.dataset.severity === 'ok') ok++;
+  });
+  const wEl = document.getElementById('warn-count');
+  const oEl = document.getElementById('ok-count');
+  if (wEl) wEl.textContent = warn;
+  if (oEl) oEl.textContent = ok;
+});
 </script>
 {% endif %}
 {% endblock %}
