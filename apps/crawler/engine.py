@@ -138,7 +138,12 @@ def crawl_site(project, session) -> int:
     """
     from apps.crawler.models import CrawlResult
 
-    base_url = f'https://{project.domain}'
+    # Normalize domain: strip any existing scheme so we always build a clean URL
+    domain = project.domain
+    if '://' in domain:
+        domain = domain.split('://', 1)[1]
+    domain = domain.rstrip('/')
+    base_url = f'https://{domain}'
     robots = _get_robots(base_url)
 
     visited = set()
