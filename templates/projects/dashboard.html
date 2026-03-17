@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+
+{% block title %}Проекты — SEO Dashboard{% endblock %}
+{% block page_title %}Проекты{% endblock %}
+{% block nav_dashboard %}bg-slate-700 text-white{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-gray-900">Управляемые сайты</h1>
+  <p class="text-gray-500 mt-1">Выберите проект для просмотра аналитики</p>
+</div>
+
+{% if projects_data %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+  {% for item in projects_data %}
+  <div class="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <a href="{% url 'projects:detail' item.project.slug %}"
+           class="text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors">
+          {{ item.project.name }}
+        </a>
+        <p class="text-sm text-gray-400">{{ item.project.domain }}</p>
+      </div>
+      <div class="flex flex-col items-end gap-1">
+        <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+          {{ item.project.get_platform_display }}
+        </span>
+        {% if item.connected %}
+        <span class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">GSC ✓</span>
+        {% else %}
+        <a href="{% url 'integrations:google_auth' item.project.pk %}"
+           class="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors">
+          Подключить GSC
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="mt-4 pt-3 border-t border-gray-100 flex items-center gap-4 text-sm">
+      {% if item.connected and item.clicks or item.impressions %}
+      <span class="text-gray-700">Кликов: <strong>{{ item.clicks }}</strong></span>
+      <span class="text-gray-700">Показов: <strong>{{ item.impressions }}</strong></span>
+      <span class="text-gray-400 text-xs">(28 дней)</span>
+      {% elif item.connected %}
+      <span class="text-gray-400 text-xs">Данные импортируются…</span>
+      {% else %}
+      <span class="text-gray-400 text-xs">Нет данных — подключите GSC</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="bg-white rounded-xl border border-gray-200 p-10 text-center">
+  <p class="text-gray-500 mb-4">Проекты не добавлены</p>
+  <a href="/admin/projects/project/add/"
+     class="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors">
+    Добавить проект
+  </a>
+</div>
+{% endif %}
+{% endblock %}

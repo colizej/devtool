@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Django
+*.sqlite3
+/staticfiles/
+/logs/
+local_settings.py
+
+# Environment
+.env
+
+# TailwindCSS
+tailwindcss
+tailwindcss-macos-arm64
+tailwindcss-macos-x64
+tailwindcss-linux-*
+tailwindcss-windows-*
+static/css/tailwind.css
+
+# Compiled/generated static
+static/css/
+
+# Logs
+logs/
+*.log
+
+# Migrations (keep structure, ignore auto-generated if needed)
+# apps/*/migrations/*.py  # раскомментировать если не хочешь коммитить миграции
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node (если появится)
+node_modules/
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Google credentials
+credentials/
+token*.json

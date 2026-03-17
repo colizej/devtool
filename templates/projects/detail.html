@@ -1,0 +1,578 @@
+{% extends 'base.html' %}
+{% load seo_tags %}
+
+{% block title %}{{ project.name }} — SEO Dashboard{% endblock %}
+{% block page_title %}{{ project.name }}{% endblock %}
+
+{% block content %}
+<!-- Шапка проекта -->
+<div class="mb-6 flex items-start justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">{{ project.name }}</h1>
+    <p class="text-gray-400 mt-1">
+      <a href="https://{{ project.domain }}" target="_blank" rel="noopener noreferrer"
+         class="hover:text-blue-600 transition-colors">{{ project.domain }} ↗</a>
+      <span class="mx-2">·</span>{{ project.get_platform_display }}
+    </p>
+  </div>
+  <div class="flex items-center gap-3 flex-shrink-0">
+    {% if connected %}
+    <form method="post" action="{% url 'integrations:gsc_import_now' project.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="inline-flex items-center gap-1 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+        ↻ Импортировать
+      </button>
+    </form>
+    <span class="text-xs px-3 py-1 rounded-full bg-green-100 text-green-700 font-medium">GSC ✓</span>
+    {% else %}
+    <a href="{% url 'integrations:google_auth' project.pk %}"
+       class="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors">
+      Подключить Google Search Console
+    </a>
+    {% endif %}
+    <a href="{% url 'projects:dashboard' %}" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">← Назад</a>
+  </div>
+</div>
+
+{% if not connected %}
+<div class="mb-6 bg-orange-50 border border-orange-200 rounded-xl p-5">
+  <h3 class="font-semibold text-orange-800 mb-1">Требуется авторизация Google</h3>
+  <p class="text-sm text-orange-700">Нажмите «Подключить Google Search Console» чтобы разрешить доступ к данным этого сайта.</p>
+</div>
+{% endif %}
+
+<!-- Фильтр дат + вкладки -->
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+
+  <!-- Tab bar -->
+  <div class="border-b border-gray-200 px-4 flex items-center justify-between">
+    <div class="flex overflow-x-auto">
+      {% for tab_id, tab_label in tabs %}
+      <a href="?tab={{ tab_id }}&days={{ days }}"
+         class="py-3 px-3 text-sm border-b-2 whitespace-nowrap transition-colors
+                {% if active_tab == tab_id %}border-blue-600 text-blue-600 font-medium{% else %}border-transparent text-gray-500 hover:text-gray-900{% endif %}">
+        {{ tab_label }}
+      </a>
+      {% endfor %}
+    </div>
+    <!-- Фильтр дат -->
+    {% if has_data %}
+    <div class="flex gap-1 ml-4 flex-shrink-0">
+      {% for d in days_options %}
+      <a href="?tab={{ active_tab }}&days={{ d }}"
+         class="px-3 py-1 text-xs rounded-full transition-colors
+                {% if days == d %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">
+        {{ d }}д
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="p-6">
+
+    {% if not has_data %}
+    <p class="text-gray-400 text-sm text-center py-10">
+      {% if connected %}Нажмите «↻ Импортировать» чтобы загрузить данные.
+      {% else %}Подключите Google Search Console чтобы увидеть данные.{% endif %}
+    </p>
+
+    {% elif active_tab == 'overview' %}
+    <!-- ── Overview ─────────────────────────────────── -->
+    <div class="grid grid-cols-3 gap-4 mb-8">
+      <div class="bg-gray-50 rounded-xl p-4 text-center">
+        <div class="text-3xl font-bold text-gray-900">{{ summary.total_clicks|default:"0" }}</div>
+        <div class="text-sm text-gray-500 mt-1">Кликов</div>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-4 text-center">
+        <div class="text-3xl font-bold text-gray-900">{{ summary.total_impressions|default:"0" }}</div>
+        <div class="text-sm text-gray-500 mt-1">Показов</div>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-4 text-center">
+        <div class="text-3xl font-bold text-gray-900">
+          {% if summary.avg_position %}{{ summary.avg_position|floatformat:1 }}{% else %}—{% endif %}
+        </div>
+        <div class="text-sm text-gray-500 mt-1">Средняя позиция</div>
+      </div>
+    </div>
+    <canvas id="trafficChart" height="80"></canvas>
+    {% if last_import %}<p class="text-xs text-gray-400 mt-4">Данные до: {{ last_import }}</p>{% endif %}
+
+    {% elif active_tab == 'queries' %}
+    <!-- ── Запросы ───────────────────────────────────── -->
+    <h3 class="text-base font-semibold text-gray-800 mb-4">Топ запросов — {{ days }} дней</h3>
+    {% if top_queries %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-200 text-left text-gray-500">
+            <th class="pb-2 font-medium">#</th>
+            <th class="pb-2 font-medium">Запрос</th>
+            <th class="pb-2 font-medium text-right">Клики</th>
+            <th class="pb-2 font-medium text-right">Показы</th>
+            <th class="pb-2 font-medium text-right">CTR</th>
+            <th class="pb-2 font-medium text-right">Позиция</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for q in top_queries %}
+          <tr class="hover:bg-gray-50">
+            <td class="py-2 text-gray-400 text-xs">{{ forloop.counter }}</td>
+            <td class="py-2 text-gray-700 max-w-xs truncate">{{ q.query|default:"(not set)" }}</td>
+            <td class="py-2 text-right font-medium text-gray-900">{{ q.clicks }}</td>
+            <td class="py-2 text-right text-gray-500">{{ q.impressions }}</td>
+            <td class="py-2 text-right text-gray-500">{{ q.avg_ctr|floatformat:1 }}%</td>
+            <td class="py-2 text-right text-gray-500">{{ q.avg_position|floatformat:1 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="text-gray-400 text-sm text-center py-6">Нет данных за выбранный период.</p>{% endif %}
+
+    {% elif active_tab == 'pages' %}
+    <!-- ── Страницы ──────────────────────────────────── -->
+    <h3 class="text-base font-semibold text-gray-800 mb-4">Топ страниц — {{ days }} дней</h3>
+    {% if top_pages %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-200 text-left text-gray-500">
+            <th class="pb-2 font-medium">#</th>
+            <th class="pb-2 font-medium">Страница</th>
+            <th class="pb-2 font-medium text-right">Клики</th>
+            <th class="pb-2 font-medium text-right">Показы</th>
+            <th class="pb-2 font-medium text-right">Позиция</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for p in top_pages %}
+          <tr class="hover:bg-gray-50">
+            <td class="py-2 text-gray-400 text-xs">{{ forloop.counter }}</td>
+            <td class="py-2 text-gray-700 max-w-md">
+              <a href="{{ p.page }}" target="_blank" rel="noopener noreferrer"
+                 class="hover:text-blue-600 transition-colors break-all">{{ p.page }}</a>
+            </td>
+            <td class="py-2 text-right font-medium text-gray-900">{{ p.clicks }}</td>
+            <td class="py-2 text-right text-gray-500">{{ p.impressions }}</td>
+            <td class="py-2 text-right text-gray-500">{{ p.avg_position|floatformat:1 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="text-gray-400 text-sm text-center py-6">Нет данных за выбранный период.</p>{% endif %}
+
+    {% else %}
+    <!-- ── Остальные вкладки (Phase 2+) ──────────────── -->
+
+    {% if active_tab == 'traffic' %}
+    <!-- ── Traffic (GA4) ──────────────────────────────── -->
+    <div class="flex items-center justify-between mb-6">
+      <h3 class="text-base font-semibold text-gray-800">Трафик — Google Analytics 4</h3>
+      {% if ga4_connected %}
+      <form method="post" action="{% url 'integrations:ga4_import_now' project.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="inline-flex items-center gap-1 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+          ↻ Импортировать GA4
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    {% if not ga4_connected %}
+    <div class="text-center py-10">
+      <div class="text-4xl mb-3">📊</div>
+      <p class="font-medium text-gray-700">GA4 не подключён</p>
+      <p class="text-sm text-gray-400 mt-1 mb-4">Укажите <strong>GA4 Property ID</strong> в Django Admin для проекта<br>
+        <span class="text-xs text-gray-400">(Пример: <code>123456789</code> — только цифры без «properties/»)</span>
+      </p>
+      <a href="/admin/projects/project/{{ project.pk }}/change/" target="_blank"
+         class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors">
+        ✏️ Открыть в Admin
+      </a>
+      <div class="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4 text-left max-w-lg mx-auto text-sm text-amber-800">
+        <p class="font-semibold mb-2">Требуется настройка в Google Cloud Console:</p>
+        <ol class="list-decimal list-inside space-y-1">
+          <li>Включить <strong>Google Analytics Data API</strong></li>
+          <li>В OAuth Consent Screen добавить scope <code>analytics.readonly</code></li>
+          <li>Переподключить GSC OAuth (кнопка «Подключить Google» на Dashboard)</li>
+        </ol>
+      </div>
+    </div>
+
+    {% elif not ga4_has_data %}
+    <div class="text-center py-10">
+      <div class="text-4xl mb-3">📭</div>
+      <p class="font-medium text-gray-700">Данных нет — нажмите «↻ Импортировать GA4»</p>
+      <p class="text-sm text-gray-400 mt-1">Property ID: <code>{{ project.analytics_property }}</code></p>
+    </div>
+
+    {% else %}
+    {# ── Summary cards ── #}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="text-xs text-gray-500 mb-1">Сессии</div>
+        <div class="text-2xl font-bold text-gray-900">{{ ga4_summary.sessions|default:"0" }}</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="text-xs text-gray-500 mb-1">Пользователи</div>
+        <div class="text-2xl font-bold text-gray-900">{{ ga4_summary.users|default:"0" }}</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="text-xs text-gray-500 mb-1">Просмотры</div>
+        <div class="text-2xl font-bold text-gray-900">{{ ga4_summary.pageviews|default:"0" }}</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="text-xs text-gray-500 mb-1">Отказы</div>
+        <div class="text-2xl font-bold text-gray-900">{{ ga4_summary.bounce_rate|floatformat:1 }}%</div>
+      </div>
+    </div>
+
+    {# ── Chart Sessions / Users ── #}
+    <div class="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+      <h4 class="text-sm font-semibold text-gray-700 mb-3">Сессии и пользователи по дням</h4>
+      <canvas id="ga4Chart" height="90"></canvas>
+    </div>
+
+    {# ── Channels table ── #}
+    <div class="bg-white rounded-xl border border-gray-200 p-5">
+      <h4 class="text-sm font-semibold text-gray-700 mb-3">По каналам</h4>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-100 text-left text-gray-500">
+            <th class="pb-2 font-medium">Канал</th>
+            <th class="pb-2 font-medium text-right">Сессии</th>
+            <th class="pb-2 font-medium text-right">Пользователи</th>
+            <th class="pb-2 font-medium text-right">Просмотры</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for ch in ga4_channels %}
+          <tr class="hover:bg-gray-50">
+            <td class="py-2 font-medium text-gray-800">{{ ch.channel|default:"(direct)" }}</td>
+            <td class="py-2 text-right text-gray-600">{{ ch.sessions }}</td>
+            <td class="py-2 text-right text-gray-600">{{ ch.users }}</td>
+            <td class="py-2 text-right text-gray-600">{{ ch.pageviews }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4" class="py-4 text-center text-gray-400 text-sm">Нет данных</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% elif active_tab == 'seo' %}
+
+    <div class="flex items-center justify-between mb-6">
+      <h3 class="text-base font-semibold text-gray-800">
+        SEO Issues — низкий CTR
+        {% if seo_issues_count %}<span class="ml-2 text-xs px-2 py-1 bg-red-100 text-red-700 rounded-full">{{ seo_issues_count }}</span>{% endif %}
+      </h3>
+      <form method="post" action="{% url 'integrations:run_seo_analysis' project.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="inline-flex items-center gap-1 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+          ↻ Запустить анализ
+        </button>
+      </form>
+    </div>
+
+    {% if not has_data %}
+    <p class="text-gray-400 text-sm text-center py-8">Сначала импортируйте данные GSC.</p>
+    {% elif not seo_issues %}
+    <div class="text-center py-10">
+      <div class="text-4xl mb-3">✅</div>
+      <p class="font-medium text-gray-700">Проблем не обнаружено</p>
+      <p class="text-sm text-gray-400 mt-1">Нажмите «↻ Запустить анализ» чтобы проверить CTR, позиции и клики</p>
+    </div>
+    {% else %}
+
+    {# Фильтры по типу #}
+    <div class="flex flex-wrap gap-2 mb-4">
+      <a href="?tab=seo&days={{ days }}"
+         class="text-xs px-3 py-1 rounded-full border transition-colors {% if not request.GET.issue_type %}bg-gray-800 text-white border-gray-800{% else %}bg-white text-gray-600 border-gray-300 hover:bg-gray-50{% endif %}">
+        Все ({{ seo_issues|length }})
+      </a>
+      {% for itype, ilabel in issue_type_counts %}
+      <a href="?tab=seo&days={{ days }}&issue_type={{ itype }}"
+         class="text-xs px-3 py-1 rounded-full border transition-colors {% if request.GET.issue_type == itype %}bg-gray-800 text-white border-gray-800{% else %}bg-white text-gray-600 border-gray-300 hover:bg-gray-50{% endif %}">
+        {{ ilabel }} ({{ itype|get_issue_count:seo_issues }})
+      </a>
+      {% endfor %}
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-200 text-left text-gray-500">
+            <th class="pb-2 font-medium">Тип</th>
+            <th class="pb-2 font-medium">Приоритет</th>
+            <th class="pb-2 font-medium">Запрос / Страница</th>
+            <th class="pb-2 font-medium text-right">Показы</th>
+            <th class="pb-2 font-medium text-right">CTR</th>
+            <th class="pb-2 font-medium text-right">Позиция</th>
+            <th class="pb-2 font-medium text-right">Потенциал</th>
+            <th class="pb-2 font-medium text-center">Статус</th>
+            <th class="pb-2 font-medium text-center">Действия</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for issue in seo_issues %}
+          <tr class="hover:bg-gray-50" id="issue-row-{{ issue.pk }}">
+            <td class="py-2">
+              <span class="text-xs px-2 py-1 rounded-full
+                {% if issue.issue_type == 'low_ctr' %}bg-yellow-100 text-yellow-700
+                {% elif issue.issue_type == 'low_position' %}bg-blue-100 text-blue-700
+                {% else %}bg-purple-100 text-purple-700{% endif %}">
+                {{ issue.get_issue_type_display }}
+              </span>
+            </td>
+            <td class="py-2">
+              <span class="text-xs px-2 py-1 rounded-full
+                {% if issue.priority == 'high' %}bg-red-100 text-red-700
+                {% elif issue.priority == 'medium' %}bg-orange-100 text-orange-700
+                {% else %}bg-gray-100 text-gray-600{% endif %}">
+                {{ issue.get_priority_display }}
+              </span>
+            </td>
+            <td class="py-2 text-gray-700 max-w-xs">
+              <div class="truncate">{{ issue.query|default:"—" }}</div>
+              {% if issue.page %}<div class="text-xs text-gray-400 truncate">{{ issue.page }}</div>{% endif %}
+              {% if issue.note %}<div class="text-xs text-indigo-500 mt-0.5 italic truncate" title="{{ issue.note }}">💬 {{ issue.note|truncatechars:60 }}</div>{% endif %}
+            </td>
+            <td class="py-2 text-right text-gray-600">{{ issue.impressions }}</td>
+            <td class="py-2 text-right {% if issue.ctr < 1.0 %}text-red-600 font-medium{% else %}text-orange-600{% endif %}">
+              {{ issue.ctr|floatformat:1 }}%
+            </td>
+            <td class="py-2 text-right text-gray-500">{{ issue.position|floatformat:1 }}</td>
+            <td class="py-2 text-right font-semibold text-green-700">+{{ issue.potential_clicks }}</td>
+            <td class="py-2 text-center">
+              <span id="status-badge-{{ issue.pk }}" class="text-xs px-2 py-1 rounded-full
+                {% if issue.status == 'fixed' %}bg-green-100 text-green-700
+                {% elif issue.status == 'important' %}bg-red-100 text-red-700
+                {% elif issue.status == 'in_progress' %}bg-blue-100 text-blue-700
+                {% elif issue.status == 'ignored' %}bg-gray-100 text-gray-400
+                {% else %}bg-gray-50 text-gray-500{% endif %}">
+                {{ issue.get_status_display }}
+              </span>
+            </td>
+            <td class="py-2 text-center">
+              <div class="flex items-center justify-center gap-1">
+                {# Открыть страницу сайта #}
+                {% if issue.page %}
+                <a href="{{ issue.page }}" target="_blank" rel="noopener"
+                   title="Открыть страницу" class="text-gray-400 hover:text-blue-600 transition-colors px-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                </a>
+                {% endif %}
+                {# Сменить статус — выпадающее меню #}
+                <div class="relative" x-data="{ open: false }">
+                  <button @click="open = !open" title="Изменить статус"
+                          class="text-gray-400 hover:text-indigo-600 transition-colors px-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 12h.01M7 17h.01M12 7h.01M12 12h.01M12 17h.01M17 7h.01M17 12h.01M17 17h.01"/>
+                    </svg>
+                  </button>
+                  <div x-show="open" @click.away="open = false"
+                       class="absolute right-0 z-20 mt-1 w-36 bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-xs">
+                    {% for s_val, s_label in issue.STATUS %}
+                    <button class="w-full text-left px-3 py-1.5 hover:bg-gray-50 transition-colors
+                      {% if s_val == 'fixed' %}text-green-700{% elif s_val == 'important' %}text-red-700{% elif s_val == 'in_progress' %}text-blue-700{% elif s_val == 'ignored' %}text-gray-400{% else %}text-gray-700{% endif %}"
+                      onclick="setIssueStatus({{ issue.pk }}, '{{ s_val }}', '{{ s_label }}', this); this.closest('[x-data]').__x.$data.open = false">
+                      {{ s_label }}
+                    </button>
+                    {% endfor %}
+                    <hr class="my-1 border-gray-100">
+                    <button class="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-gray-500 transition-colors"
+                      onclick="addIssueNote({{ issue.pk }}, this.closest('[x-data]'))">
+                      💬 Заметка…
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-xs text-gray-400 mt-4">
+      <span class="inline-block px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded mr-1">Низкий CTR</span> — CTR &lt; 50% от benchmark по позиции.
+      <span class="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded mr-1 ml-2">Низкая позиция</span> — позиции 4–20, близко к ТОП-3.
+      <span class="inline-block px-2 py-0.5 bg-purple-100 text-purple-700 rounded ml-2">Нет кликов</span> — есть показы, но 0 кликов.
+    </p>
+    {% endif %}
+
+    {% else %}
+    <div class="text-center py-12 text-gray-400">
+      <div class="text-4xl mb-3">🚧</div>
+      <p class="font-medium text-gray-500">В разработке</p>
+      <p class="text-sm mt-1">Эта вкладка появится в следующих фазах</p>
+    </div>
+    {% endif %}
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if active_tab == 'seo' %}
+<script>
+const CSRF_TOKEN = '{{ csrf_token }}';
+
+const STATUS_CLASSES = {
+  new:         'bg-gray-50 text-gray-500',
+  important:   'bg-red-100 text-red-700',
+  in_progress: 'bg-blue-100 text-blue-700',
+  fixed:       'bg-green-100 text-green-700',
+  ignored:     'bg-gray-100 text-gray-400',
+};
+
+function setIssueStatus(issueId, statusVal, statusLabel, btn) {
+  const url = `/integrations/seo/issue/${issueId}/status/`;
+  const body = new FormData();
+  body.append('status', statusVal);
+  body.append('csrfmiddlewaretoken', CSRF_TOKEN);
+
+  fetch(url, { method: 'POST', body })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) return;
+      const badge = document.getElementById(`status-badge-${issueId}`);
+      if (badge) {
+        badge.textContent = data.status_label;
+        badge.className = 'text-xs px-2 py-1 rounded-full ' + (STATUS_CLASSES[data.status] || STATUS_CLASSES.new);
+      }
+      // Затемнить строку если ignored/fixed
+      const row = document.getElementById(`issue-row-${issueId}`);
+      if (row) {
+        row.style.opacity = (data.status === 'ignored' || data.status === 'fixed') ? '0.45' : '1';
+      }
+    })
+    .catch(() => alert('Ошибка при обновлении статуса'));
+}
+
+function addIssueNote(issueId, alpineEl) {
+  const current = document.querySelector(`#issue-row-${issueId} .italic`)?.title || '';
+  const note = prompt('Заметка к проблеме:', current);
+  if (note === null) return; // отмена
+  const url = `/integrations/seo/issue/${issueId}/status/`;
+  const body = new FormData();
+  body.append('note', note);
+  body.append('csrfmiddlewaretoken', CSRF_TOKEN);
+  fetch(url, { method: 'POST', body })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) return;
+      // Обновить отображение заметки
+      const row = document.getElementById(`issue-row-${issueId}`);
+      const cell = row?.querySelector('td:nth-child(3)');
+      if (!cell) return;
+      let noteEl = cell.querySelector('.italic');
+      if (note) {
+        if (!noteEl) {
+          noteEl = document.createElement('div');
+          noteEl.className = 'text-xs text-indigo-500 mt-0.5 italic truncate';
+          cell.appendChild(noteEl);
+        }
+        noteEl.textContent = '💬 ' + note.substring(0, 60) + (note.length > 60 ? '…' : '');
+        noteEl.title = note;
+      } else if (noteEl) {
+        noteEl.remove();
+      }
+    })
+    .catch(() => alert('Ошибка при сохранении заметки'));
+  if (alpineEl?.__x) alpineEl.__x.$data.open = false;
+}
+</script>
+{% endif %}
+
+{% if active_tab == 'overview' and has_data %}
+<script>
+const ctx = document.getElementById('trafficChart');
+if (ctx) {
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: {{ chart_labels|safe }},
+      datasets: [
+        {
+          label: 'Клики',
+          data: {{ chart_clicks|safe }},
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59,130,246,0.08)',
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Показы',
+          data: {{ chart_impressions|safe }},
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16,185,129,0.06)',
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y1',
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        y:  { type: 'linear', position: 'left',  title: { display: true, text: 'Клики' } },
+        y1: { type: 'linear', position: 'right', title: { display: true, text: 'Показы' }, grid: { drawOnChartArea: false } },
+      }
+    }
+  });
+}
+</script>
+{% endif %}
+
+{% if active_tab == 'traffic' and ga4_has_data %}
+<script>
+const ga4Ctx = document.getElementById('ga4Chart');
+if (ga4Ctx) {
+  new Chart(ga4Ctx, {
+    type: 'line',
+    data: {
+      labels: {{ ga4_chart_labels|safe }},
+      datasets: [
+        {
+          label: 'Сессии',
+          data: {{ ga4_chart_sessions|safe }},
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,0.08)',
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Пользователи',
+          data: {{ ga4_chart_users|safe }},
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16,185,129,0.06)',
+          tension: 0.3,
+          fill: false,
+          yAxisID: 'y',
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        y: { type: 'linear', position: 'left', title: { display: true, text: 'Визиты' } },
+      }
+    }
+  });
+}
+</script>
+{% endif %}
+{% endblock %}
