@@ -182,24 +182,32 @@ Phase 5  │ Advanced Features      │ ongoing
 - [x] Summary cards: всего страниц / предупреждений / без ошибок
 - [x] Запуск в фоновом потоке (не блокирует UI)
 
+**Баги исправлены** ✅
+- [x] **robots.txt SSL-блокировка (Python 3.14):** `RobotFileParser.read()` использует `urllib` внутри, который падает с `SSL: CERTIFICATE_VERIFY_FAILED` → entries остаются пустыми → `can_fetch()` возвращает `False` для всех URL. Исправлено: `_get_robots()` теперь использует `httpx` (с `verify=False`) + `rp.parse()` напрямую
+- [x] **domain с протоколом в БД:** поле `domain` для clikme.ru хранилось как `https://clikme.ru`, engine делал `f'https://{domain}'` → невалидный URL. Исправлено: нормализация в `crawl_site()` + исправлено в БД
+- [x] **Django DB в background thread:** `close_old_connections()` добавлен в `_run_crawl()` — Django не передаёт DB-соединения в новые потоки
+
 ### Результат фазы
 
-Полный технический аудит сайта в один клик — до 500 страниц, 11 SEO-проверок
+Полный технический аудит сайта в один клик — до 500 страниц, 11 SEO-проверок.
+Протестировано на piecedetheatre.be и clikme.ru.
 
 ---
 
 ## Phase 4 — AI & Reports
 
-> Цель: умные рекомендации и экспорт
+> Цель: умные рекомендации на основе собранных данных + экспорт
 
 ### Задачи
 
 **AI Engine**
-- [ ] Выбор провайдера: OpenAI GPT-4o (рекомендован) или Ollama (локальный, бесплатный)
-- [ ] Абстрактный интерфейс `AIProvider` (легко менять провайдера)
-- [ ] Промпты для: анализ CTR, предложение title/description, анализ SEO issues
-- [ ] Батч-обработка: не более 20 страниц за раз (контроль стоимости)
-- [ ] Хранение результатов в `AIRecommendation` модели
+- [ ] Выбор провайдера: **Gemini 1.5 Flash** (бесплатный tier, рекомендован) или OpenAI GPT-4o
+- [ ] Абстрактный интерфейс `AIProvider` — легко менять провайдера через `.env`
+- [ ] Модель `AIRecommendation` (project, url, rec_type, prompt, response, created_at, tokens_used)
+- [ ] Промпты для:
+  - Title/Description оптимизация (на основе GSC: позиция + CTR + топ-запросы)
+  - Анализ страницы с низким CTR
+  - Общий SEO-аудит проекта
 
 **Примеры промптов:**
 ```
@@ -216,15 +224,20 @@ Suggest 3 improved title variants (max 60 chars) that would increase CTR.
 Explain why CTR is low.
 ```
 
+- [ ] Батч-обработка: не более 20 страниц за раз (контроль стоимости/квоты)
+- [ ] Хранение результатов в `AIRecommendation` модели
+- [ ] `apps/ai/` — отдельное приложение
+
 **Reports**
-- [ ] PDF отчёт по проекту (weekly summary) через `weasyprint` или `reportlab`
-- [ ] CSV экспорт: queries, pages, issues
-- [ ] Еженедельный email отчёт (опционально, через django email)
+- [ ] CSV экспорт: queries, pages, crawl results, issues
+- [ ] PDF отчёт по проекту (weekly summary) — `reportlab` или `weasyprint`
+- [ ] Еженедельный scheduler job: генерация отчёта
 
 **UI**
-- [ ] Вкладка AI Report: список рекомендаций по страницам
-- [ ] Кнопка "Generate AI Report" (on-demand)
+- [ ] Вкладка AI Report: список рекомендаций по страницам (url, тип, текст)
+- [ ] Кнопка "Сгенерировать AI отчёт" — on-demand + прогресс
 - [ ] История рекомендаций с датами
+- [ ] Кнопка "Экспортировать CSV"
 
 ### Результат фазы
 
