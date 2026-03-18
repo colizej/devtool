@@ -425,15 +425,28 @@
     <!-- ── Crawler ──────────────────────────────────────── -->
     <div class="flex items-center justify-between mb-6">
       <h3 class="text-base font-semibold text-gray-800">Технический SEO Crawler</h3>
-      <form method="post" action="{% url 'crawler:crawl_start' project.pk %}">
-        {% csrf_token %}
-        <button type="submit"
-          {% if crawl_session and crawl_session.status == 'running' %}disabled{% endif %}
-          class="inline-flex items-center gap-1.5 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-          {% if crawl_session and crawl_session.status == 'running' %}Краулер работает…{% else %}Запустить Crawler{% endif %}
-        </button>
-      </form>
+      <div class="flex items-center gap-2">
+        {% if crawl_session and crawl_session.status == 'running' %}
+        <form method="post" action="{% url 'crawler:crawl_reset' crawl_session.pk %}">
+          {% csrf_token %}
+          <button type="submit"
+            onclick="return confirm('Остановить краулер?')"
+            class="inline-flex items-center gap-1.5 bg-red-50 border border-red-300 text-red-700 px-3 py-2 rounded-lg text-sm hover:bg-red-100 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            Остановить
+          </button>
+        </form>
+        {% endif %}
+        <form method="post" action="{% url 'crawler:crawl_start' project.pk %}">
+          {% csrf_token %}
+          <button type="submit"
+            {% if crawl_session and crawl_session.status == 'running' %}disabled{% endif %}
+            class="inline-flex items-center gap-1.5 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            {% if crawl_session and crawl_session.status == 'running' %}Краулер работает…{% else %}Запустить Crawler{% endif %}
+          </button>
+        </form>
+      </div>
     </div>
 
     {% if crawl_session %}
@@ -454,7 +467,7 @@
       {% if crawl_session.status == 'running' %}
       <div class="text-blue-600 text-xs flex items-center gap-1">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-        Страница автообновится через 30с…
+        Страница автообновится через <span id="crawl-countdown">30</span>с…
       </div>
       {% endif %}
       {% if crawl_session.error_message %}
@@ -772,6 +785,21 @@ if (ga4Ctx) {
 </script>
 {% endif %}
 
+{% if active_tab == 'crawler' and crawl_session and crawl_session.status == 'running' %}
+<script>
+// Обратный отсчёт и автообновление
+document.addEventListener('DOMContentLoaded', () => {
+  let secs = 30;
+  const el = document.getElementById('crawl-countdown');
+  const tick = setInterval(() => {
+    secs--;
+    if (el) el.textContent = secs;
+    if (secs <= 0) { clearInterval(tick); location.reload(); }
+  }, 1000);
+});
+</script>
+{% endif %}
+
 {% if active_tab == 'crawler' and crawl_results %}
 <script>
 function filterCrawl(type) {
@@ -799,10 +827,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (wEl) wEl.textContent = warn;
   if (oEl) oEl.textContent = ok;
 
-  // Авто-обновление страницы пока краулер работает
-  {% if crawl_session and crawl_session.status == 'running' %}
-  setTimeout(() => location.reload(), 30000);
-  {% endif %}
 });
 
 // ── Сортировка таблицы краулера ──────────────────────────────────────────

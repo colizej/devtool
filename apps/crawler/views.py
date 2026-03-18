@@ -53,7 +53,7 @@ def crawl_start(request, project_id):
     thread = threading.Thread(target=_run_crawl, args=(project, session), daemon=True)
     thread.start()
 
-    messages.success(request, f'Краулер запущен для «{project.name}». Обновите страницу через минуту.')
+    messages.success(request, f'Краулер запущен для «{project.name}».')
     return redirect(f'/project/{project.slug}/?tab=crawler')
 
 
