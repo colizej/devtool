@@ -2,6 +2,7 @@ import threading
 import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from apps.projects.models import Project
@@ -55,6 +56,16 @@ def crawl_start(request, project_id):
 
     messages.success(request, f'Краулер запущен для «{project.name}».')
     return redirect(f'/project/{project.slug}/?tab=crawler')
+
+
+@login_required
+def crawl_status(request, session_id):
+    """JSON-статус сессии краулера для опроса с фронтенда."""
+    session = get_object_or_404(CrawlSession, pk=session_id)
+    return JsonResponse({
+        'status': session.status,
+        'pages_crawled': session.pages_crawled,
+    })
 
 
 @login_required
