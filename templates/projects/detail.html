@@ -498,13 +498,13 @@
     <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div class="flex gap-2 p-3 border-b border-gray-100 flex-wrap">
         <button onclick="filterCrawl('all')" id="f-all"
-          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-gray-900 text-white">Все</button>
+          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-gray-900 text-white">Все <span id="cnt-all" class="ml-1 opacity-70"></span></button>
         <button onclick="filterCrawl('error')" id="f-error"
-          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-red-50">Ошибки</button>
+          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-red-50">Ошибки <span id="cnt-error" class="ml-1 text-red-500 font-semibold"></span></button>
         <button onclick="filterCrawl('warning')" id="f-warning"
-          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-amber-50">Предупреждения</button>
+          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-amber-50">Предупреждения <span id="cnt-warning" class="ml-1 text-amber-600 font-semibold"></span></button>
         <button onclick="filterCrawl('ok')" id="f-ok"
-          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-green-50">ОК</button>
+          class="crawl-filter px-3 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-green-50">ОК <span id="cnt-ok" class="ml-1 text-green-600 font-semibold"></span></button>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm" id="crawl-table">
@@ -894,19 +894,23 @@ function filterCrawl(type) {
   });
 }
 
-// Подсчёт warnings и ok
+// Подсчёт по severity и обновление счётчиков в кнопках фильтра
 document.addEventListener('DOMContentLoaded', () => {
   const rows = document.querySelectorAll('.crawl-row');
-  let warn = 0, ok = 0;
-  rows.forEach(r => {
-    if (r.dataset.severity === 'warning') warn++;
-    else if (r.dataset.severity === 'ok') ok++;
-  });
+  let counts = { error: 0, warning: 0, ok: 0 };
+  rows.forEach(r => { if (counts[r.dataset.severity] !== undefined) counts[r.dataset.severity]++; });
+  const total = counts.error + counts.warning + counts.ok;
+
+  document.getElementById('cnt-all').textContent     = total    || '';
+  document.getElementById('cnt-error').textContent   = counts.error   || '';
+  document.getElementById('cnt-warning').textContent = counts.warning || '';
+  document.getElementById('cnt-ok').textContent      = counts.ok      || '';
+
+  // Обратная совместимость со старыми элементами summary
   const wEl = document.getElementById('warn-count');
   const oEl = document.getElementById('ok-count');
-  if (wEl) wEl.textContent = warn;
-  if (oEl) oEl.textContent = ok;
-
+  if (wEl) wEl.textContent = counts.warning;
+  if (oEl) oEl.textContent = counts.ok;
 });
 
 // ── Сортировка таблицы краулера ──────────────────────────────────────────
