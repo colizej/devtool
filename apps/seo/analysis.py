@@ -1,6 +1,11 @@
 """
 CTR Analysis Service.
 Compares real CTR with industry benchmark by position.
+
+NOTE: All analyze_* functions preserve existing `status` and `note` fields
+so that manually reviewed/fixed issues are never reset on re-analysis.
+New issues are created, outdated issues are deleted, existing ones are updated
+with fresh metrics only — status/note remain untouched.
 """
 import logging
 from datetime import timedelta
@@ -11,6 +16,54 @@ logger = logging.getLogger("seo")
 
 _BENCH = {1: 0.28, 2: 0.15, 3: 0.11, 4: 0.08, 5: 0.06,
           6: 0.05, 7: 0.04, 8: 0.03, 9: 0.025, 10: 0.02}
+
+
+def _upsert_issues(project, issue_type, new_issues):
+    """
+    Sync issues of a given type for a project without losing status/note.
+
+    - Existing issues (matched by query+page) → update metrics, keep status/note
+    - New issues not seen before → create
+    - Old issues no longer in current data → delete
+    """
+    from .models import SeoIssue
+
+    # Build lookup key → new issue data
+    new_map = {(i.query, i.page): i for i in new_issues}
+
+    existing = {
+        (obj.query, obj.page): obj
+        for obj in SeoIssue.objects.filter(project=project, issue_type=issue_type)
+    }
+
+    to_create = []
+    to_update = []
+    update_fields = ['priority', 'clicks', 'impressions', 'ctr', 'position', 'potential_clicks']
+
+    for key, new in new_map.items():
+        if key in existing:
+            obj = existing[key]
+            for f in update_fields:
+                setattr(obj, f, getattr(new, f))
+            to_update.append(obj)
+        else:
+            to_create.append(new)
+
+    # Delete issues that disappeared from current data
+    stale_keys = set(existing.keys()) - set(new_map.keys())
+    if stale_keys:
+        stale_qs = [(q, p) for q, p in stale_keys]
+        for query, page in stale_qs:
+            SeoIssue.objects.filter(
+                project=project, issue_type=issue_type, query=query, page=page
+            ).delete()
+
+    if to_create:
+        SeoIssue.objects.bulk_create(to_create)
+    if to_update:
+        SeoIssue.objects.bulk_update(to_update, update_fields)
+
+    return len(new_map)
 
 
 def _expected_ctr(position):
@@ -46,8 +99,6 @@ def analyze_ctr(project, days=30):
         logger.info("CTR analysis: no data for %s", project.name)
         return 0
 
-    SeoIssue.objects.filter(project=project, issue_type="low_ctr").delete()
-
     issues = []
     for row in query_stats:
         ctr = row["avg_ctr"] or 0.0
@@ -78,9 +129,9 @@ def analyze_ctr(project, days=30):
                     potential_clicks=potential,
                 ))
 
-    SeoIssue.objects.bulk_create(issues)
-    logger.info("CTR analysis for %s: %d issues", project.name, len(issues))
-    return len(issues)
+    count = _upsert_issues(project, "low_ctr", issues)
+    logger.info("CTR analysis for %s: %d issues", project.name, count)
+    return count
 
 
 def analyze_low_position(project, days=30):
@@ -109,8 +160,6 @@ def analyze_low_position(project, days=30):
 
     if not query_stats.exists():
         return 0
-
-    SeoIssue.objects.filter(project=project, issue_type="low_position").delete()
 
     issues = []
     for row in query_stats:
@@ -143,9 +192,9 @@ def analyze_low_position(project, days=30):
                 potential_clicks=potential,
             ))
 
-    SeoIssue.objects.bulk_create(issues)
-    logger.info("Low-position analysis for %s: %d issues", project.name, len(issues))
-    return len(issues)
+    count = _upsert_issues(project, "low_position", issues)
+    logger.info("Low-position analysis for %s: %d issues", project.name, count)
+    return count
 
 
 def analyze_no_clicks(project, days=30):
@@ -175,8 +224,6 @@ def analyze_no_clicks(project, days=30):
     if not query_stats.exists():
         return 0
 
-    SeoIssue.objects.filter(project=project, issue_type="no_clicks").delete()
-
     issues = []
     for row in query_stats:
         impressions = row["total_impressions"]
@@ -204,9 +251,9 @@ def analyze_no_clicks(project, days=30):
             potential_clicks=potential,
         ))
 
-    SeoIssue.objects.bulk_create(issues)
-    logger.info("No-clicks analysis for %s: %d issues", project.name, len(issues))
-    return len(issues)
+    count = _upsert_issues(project, "no_clicks", issues)
+    logger.info("No-clicks analysis for %s: %d issues", project.name, count)
+    return count
 
 
 def run_full_analysis(project, days=30):
