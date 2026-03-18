@@ -4,6 +4,7 @@ django-apscheduler==0.6.2
 google-auth-oauthlib==1.2.1
 google-api-python-client==2.122.0
 google-analytics-data==0.18.14
+google-genai>=1.0
 requests==2.31.0
 beautifulsoup4==4.12.3
 httpx==0.28.1

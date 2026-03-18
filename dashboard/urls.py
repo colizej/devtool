@@ -27,4 +27,5 @@ urlpatterns = [
     path('', include('apps.projects.urls')),
     path('', include('apps.integrations.urls')),
     path('', include('apps.crawler.urls')),
+    path('', include('apps.ai.urls')),
 ]

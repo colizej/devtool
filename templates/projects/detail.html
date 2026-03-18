@@ -359,6 +359,14 @@
             </td>
             <td class="py-2 text-center">
               <div class="flex items-center justify-center gap-1">
+                {# AI Fix #}
+                {% if issue.page %}
+                <button onclick="openAiModal('{{ issue.page|escapejs }}', 'ctr_analysis', {{ project.pk }})"
+                        title="AI анализ CTR"
+                        class="text-xs px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100 transition-colors">
+                  ✨
+                </button>
+                {% endif %}
                 {# Открыть страницу сайта #}
                 {% if issue.page %}
                 <a href="{{ issue.page }}" target="_blank" rel="noopener"
@@ -483,6 +491,7 @@
               <th class="px-4 py-2 font-medium">H1</th>
               <th class="px-4 py-2 font-medium text-right">Загрузка</th>
               <th class="px-4 py-2 font-medium">Проблемы</th>
+              <th class="px-4 py-2 font-medium text-center">AI</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-50">
@@ -522,6 +531,17 @@
                 {% empty %}
                 <span class="text-xs text-green-600">✓</span>
                 {% endfor %}
+              </td>
+              <td class="px-4 py-2 text-center">
+                {% if r.issues_list %}
+                <button onclick="openAiModal('{{ r.url|escapejs }}', 'title', {{ project.pk }})"
+                        title="Получить AI рекомендации"
+                        class="text-xs px-2 py-1 rounded-md bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100 transition-colors whitespace-nowrap">
+                  ✨ AI Fix
+                </button>
+                {% else %}
+                <span class="text-gray-300 text-xs">—</span>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -740,4 +760,206 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 {% endif %}
+
+{# ── AI Fix Modal ─────────────────────────────────────────────────────── #}
+<div id="ai-modal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true">
+  {# backdrop #}
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeAiModal()"></div>
+  {# panel #}
+  <div class="relative z-10 flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      {# header #}
+      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div>
+          <h3 class="font-semibold text-gray-800">✨ AI Fix</h3>
+          <p id="ai-modal-url" class="text-xs text-gray-400 truncate mt-0.5 max-w-md"></p>
+        </div>
+        <button onclick="closeAiModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+      </div>
+      {# type tabs #}
+      <div class="flex gap-2 px-6 pt-4">
+        <button onclick="switchAiType('title')"        id="ai-tab-title"        class="ai-tab px-3 py-1 rounded-full text-xs font-medium bg-violet-600 text-white">Title</button>
+        <button onclick="switchAiType('description')"  id="ai-tab-description"  class="ai-tab px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200">Description</button>
+        <button onclick="switchAiType('h1')"           id="ai-tab-h1"           class="ai-tab px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200">H1</button>
+        <button onclick="switchAiType('ctr_analysis')" id="ai-tab-ctr_analysis" class="ai-tab px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200">CTR Analysis</button>
+      </div>
+      {# body #}
+      <div class="flex-1 overflow-y-auto px-6 py-4">
+        {# loading #}
+        <div id="ai-loading" class="hidden text-center py-12 text-gray-400">
+          <div class="inline-block w-8 h-8 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin mb-3"></div>
+          <p class="text-sm">Генерирую рекомендации…</p>
+        </div>
+        {# error #}
+        <div id="ai-error" class="hidden bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700"></div>
+        {# results #}
+        <div id="ai-result" class="hidden space-y-4"></div>
+      </div>
+      {# footer #}
+      <div class="px-6 py-3 border-t border-gray-100 flex justify-between items-center">
+        <span id="ai-tokens" class="text-xs text-gray-400"></span>
+        <button onclick="runAiFix()" id="ai-run-btn"
+                class="inline-flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white text-sm px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
+          <span id="ai-run-label">✨ Сгенерировать</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── AI Fix Modal ────────────────────────────────────────────────────────────
+let _aiUrl = '', _aiType = 'title', _aiProjectId = null;
+
+function openAiModal(url, type, projectId) {
+  _aiUrl = url;
+  _aiType = type;
+  _aiProjectId = projectId;
+  document.getElementById('ai-modal-url').textContent = url;
+  document.getElementById('ai-modal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  switchAiType(type);
+  resetAiResult();
+}
+
+function closeAiModal() {
+  document.getElementById('ai-modal').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function switchAiType(type) {
+  _aiType = type;
+  document.querySelectorAll('.ai-tab').forEach(b => {
+    b.className = 'ai-tab px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200';
+  });
+  const active = document.getElementById('ai-tab-' + type);
+  if (active) active.className = 'ai-tab px-3 py-1 rounded-full text-xs font-medium bg-violet-600 text-white';
+  resetAiResult();
+}
+
+function resetAiResult() {
+  document.getElementById('ai-loading').classList.add('hidden');
+  document.getElementById('ai-error').classList.add('hidden');
+  document.getElementById('ai-result').classList.add('hidden');
+  document.getElementById('ai-tokens').textContent = '';
+  document.getElementById('ai-run-btn').disabled = false;
+  document.getElementById('ai-run-label').textContent = '✨ Сгенерировать';
+}
+
+function runAiFix() {
+  const btn = document.getElementById('ai-run-btn');
+  btn.disabled = true;
+  document.getElementById('ai-run-label').textContent = 'Генерирую…';
+  document.getElementById('ai-loading').classList.remove('hidden');
+  document.getElementById('ai-error').classList.add('hidden');
+  document.getElementById('ai-result').classList.add('hidden');
+
+  fetch(`/ai/fix/${_aiProjectId}/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCookie('csrftoken'),
+    },
+    body: JSON.stringify({ url: _aiUrl, rec_type: _aiType }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById('ai-loading').classList.add('hidden');
+    btn.disabled = false;
+    document.getElementById('ai-run-label').textContent = '↻ Обновить';
+    if (!data.ok) {
+      const err = document.getElementById('ai-error');
+      err.textContent = 'Ошибка: ' + (data.error || 'Неизвестная ошибка');
+      err.classList.remove('hidden');
+      return;
+    }
+    if (data.tokens_used) {
+      document.getElementById('ai-tokens').textContent = `Использовано токенов: ${data.tokens_used}`;
+    }
+    renderAiResult(data.result, _aiType);
+  })
+  .catch(e => {
+    document.getElementById('ai-loading').classList.add('hidden');
+    btn.disabled = false;
+    document.getElementById('ai-run-label').textContent = '✨ Сгенерировать';
+    const err = document.getElementById('ai-error');
+    err.textContent = 'Сетевая ошибка: ' + e.message;
+    err.classList.remove('hidden');
+  });
+}
+
+function renderAiResult(result, type) {
+  const container = document.getElementById('ai-result');
+  container.innerHTML = '';
+
+  if (type === 'ctr_analysis') {
+    if (result.analysis) {
+      container.innerHTML += `<div class="bg-gray-50 rounded-lg p-4 text-sm text-gray-700"><strong class="block text-gray-900 mb-1">Анализ</strong>${escHtml(result.analysis)}</div>`;
+    }
+    if (result.title) {
+      container.innerHTML += variantCard('Рекомендуемый Title', [result.title]);
+    }
+    if (result.description) {
+      container.innerHTML += variantCard('Рекомендуемый Description', [result.description]);
+    }
+  } else {
+    if (result.explanation) {
+      container.innerHTML += `<div class="bg-gray-50 rounded-lg p-4 text-sm text-gray-700"><strong class="block text-gray-900 mb-1">Анализ</strong>${escHtml(result.explanation)}</div>`;
+    }
+    if (result.variants && result.variants.length) {
+      container.innerHTML += variantCard('Варианты', result.variants);
+    }
+  }
+
+  if (!container.innerHTML) {
+    container.innerHTML = '<p class="text-gray-400 text-sm">AI не вернул результатов. Попробуйте ещё раз.</p>';
+  }
+  container.classList.remove('hidden');
+}
+
+function variantCard(label, variants) {
+  const items = variants.map((v, i) => `
+    <div class="flex items-start gap-2 p-3 bg-white border border-gray-200 rounded-lg group">
+      <span class="text-xs text-gray-400 mt-0.5 w-4 shrink-0">${i+1}.</span>
+      <span class="flex-1 text-sm text-gray-800">${escHtml(v)}</span>
+      <div class="flex items-center gap-1 shrink-0">
+        <span class="text-xs text-gray-400">${v.length} симв.</span>
+        <button onclick="copyText(this, ${JSON.stringify(v)})"
+                class="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500 hover:bg-violet-100 hover:text-violet-700 transition-colors">
+          Копировать
+        </button>
+      </div>
+    </div>`).join('');
+  return `<div><p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">${escHtml(label)}</p><div class="space-y-2">${items}</div></div>`;
+}
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓ Скопировано';
+    btn.className = 'text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 transition-colors';
+    setTimeout(() => {
+      btn.textContent = 'Копировать';
+      btn.className = 'text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500 hover:bg-violet-100 hover:text-violet-700 transition-colors';
+    }, 2000);
+  });
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function getCookie(name) {
+  const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+  return v ? v[2] : null;
+}
+
+// Закрытие по Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeAiModal();
+});
+</script>
 {% endblock %}
