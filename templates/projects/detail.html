@@ -811,8 +811,8 @@ function sortCrawlTable(col, type) {
   }
 
   rows.sort((a, b) => {
-    let av = a.getAttribute(attr) || '';
-    let bv = b.getAttribute(attr) || '';
+    let av = (a.querySelector('[' + attr + ']') || a).getAttribute(attr) || '';
+    let bv = (b.querySelector('[' + attr + ']') || b).getAttribute(attr) || '';
     if (type === 'num') {
       av = parseFloat(av) || 0;
       bv = parseFloat(bv) || 0;
