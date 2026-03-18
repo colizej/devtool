@@ -85,13 +85,14 @@ def _extract_page_data(url: str, html: str, base_url: str) -> dict:
         if not img.get('alt', '').strip()
     )
 
-    # Internal links
-    internal_links = set()
+    # Internal links — собираем вместе с anchor text для отслеживания битых ссылок
+    internal_links = {}  # href_norm -> anchor_text (первый встреченный)
     for a in soup.find_all('a', href=True):
         href = urljoin(url, a['href'])
         href_norm = _normalize_url(href)
         if _is_same_domain(href_norm, base_url) and href_norm.startswith('http'):
-            internal_links.add(href_norm)
+            if href_norm not in internal_links:
+                internal_links[href_norm] = a.get_text(strip=True)[:512]
 
     # Word count (text body)
     for tag in soup(['script', 'style', 'nav', 'footer', 'header']):
@@ -105,7 +106,7 @@ def _extract_page_data(url: str, html: str, base_url: str) -> dict:
         'h1_count': h1_count,
         'canonical': canonical[:2048],
         'images_missing_alt': images_missing_alt,
-        'internal_links': list(internal_links),
+        'internal_links': internal_links,  # dict: url -> anchor
         'word_count': word_count,
     }
 
@@ -134,9 +135,9 @@ def _check_seo_issues(data: dict, url: str) -> dict:
 def crawl_site(project, session) -> int:
     """
     Краулит сайт проекта. Возвращает количество проползённых страниц.
-    Сохраняет результаты в CrawlResult.
+    Сохраняет результаты в CrawlResult и BrokenLink.
     """
-    from apps.crawler.models import CrawlResult
+    from apps.crawler.models import CrawlResult, BrokenLink
 
     # Normalize domain: strip any existing scheme so we always build a clean URL
     domain = project.domain
@@ -149,6 +150,8 @@ def crawl_site(project, session) -> int:
     visited = set()
     queue = [_normalize_url(base_url + '/')]
     count = 0
+    # source_map: broken_url -> list of (found_on, anchor_text, status_code)
+    link_sources: dict[str, list[tuple[str, str, int | None]]] = {}
 
     with httpx.Client(headers=HEADERS, timeout=REQUEST_TIMEOUT,
                       follow_redirects=True, verify=False) as client:
@@ -186,18 +189,27 @@ def crawl_site(project, session) -> int:
                 elif 'text/html' in resp.headers.get('content-type', ''):
                     page_data = _extract_page_data(url, resp.text, base_url)
                     issues = _check_seo_issues(page_data, url)
-                    # Добавляем новые ссылки в очередь
-                    for link in page_data.get('internal_links', []):
+                    # Добавляем новые ссылки в очередь, запоминаем источник
+                    for link, anchor in page_data.get('internal_links', {}).items():
                         if link not in visited and link not in queue:
                             queue.append(link)
+                        # Запоминаем кто ссылается на этот URL
+                        link_sources.setdefault(link, []).append((url, anchor, None))
             except httpx.TimeoutException:
                 status_code = None
                 load_time_ms = REQUEST_TIMEOUT * 1000
                 is_broken = True
                 logger.warning('Timeout: %s', url)
+                # Обновляем status_code в записях link_sources для этого URL
+                if url in link_sources:
+                    link_sources[url] = [(s, a, None) for s, a, _ in link_sources[url]]
             except Exception as e:
                 logger.error('Crawl error %s: %s', url, e)
                 continue
+
+            # Обновляем финальный status_code в link_sources
+            if is_broken and url in link_sources:
+                link_sources[url] = [(s, a, status_code) for s, a, _ in link_sources[url]]
 
             CrawlResult.objects.update_or_create(
                 session=session,
@@ -212,7 +224,7 @@ def crawl_site(project, session) -> int:
                     'load_time_ms': load_time_ms if status_code else None,
                     'word_count': page_data.get('word_count', 0),
                     'images_missing_alt': page_data.get('images_missing_alt', 0),
-                    'internal_links': len(page_data.get('internal_links', [])),
+                    'internal_links': len(page_data.get('internal_links', {})),
                     'issue_broken': is_broken,
                     **issues,
                 },
@@ -226,5 +238,29 @@ def crawl_site(project, session) -> int:
                 session.save(update_fields=['pages_crawled', 'pages_found'])
 
             time.sleep(CRAWL_DELAY)
+
+    # Сохраняем битые ссылки: только те URL которые оказались broken
+    broken_results = set(
+        CrawlResult.objects.filter(session=session, issue_broken=True)
+        .values_list('url', flat=True)
+    )
+    broken_objs = []
+    for broken_url, sources in link_sources.items():
+        if broken_url in broken_results:
+            seen = set()
+            for found_on, anchor, code in sources:
+                key = (broken_url, found_on)
+                if key not in seen:
+                    seen.add(key)
+                    broken_objs.append(BrokenLink(
+                        session=session,
+                        broken_url=broken_url,
+                        found_on=found_on,
+                        status_code=code,
+                        anchor_text=anchor,
+                    ))
+    if broken_objs:
+        BrokenLink.objects.bulk_create(broken_objs, ignore_conflicts=True)
+        logger.info('Saved %d broken links for session %d', len(broken_objs), session.pk)
 
     return count

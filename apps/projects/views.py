@@ -153,9 +153,10 @@ def project_detail(request, slug):
     ]
 
     # Crawler
-    from apps.crawler.models import CrawlSession, CrawlResult
+    from apps.crawler.models import CrawlSession, CrawlResult, BrokenLink
     crawl_session = CrawlSession.objects.filter(project=project).first()
     crawl_results = CrawlResult.objects.filter(session=crawl_session) if crawl_session else []
+    broken_links = BrokenLink.objects.filter(session=crawl_session).order_by('broken_url') if crawl_session else []
 
     return render(request, 'projects/detail.html', {
         'project': project,
@@ -196,4 +197,5 @@ def project_detail(request, slug):
         # Crawler
         'crawl_session': crawl_session,
         'crawl_results': crawl_results,
+        'broken_links': broken_links,
     })

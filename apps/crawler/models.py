@@ -95,3 +95,19 @@ class CrawlResult(models.Model):
         if self.images_missing_alt:    issues.append(('warning', f'{self.images_missing_alt} изобр. без alt'))
         return issues
 
+
+class BrokenLink(models.Model):
+    """Битая ссылка: URL который не отвечает + страница где она найдена."""
+    session     = models.ForeignKey(CrawlSession, on_delete=models.CASCADE, related_name='broken_links')
+    broken_url  = models.URLField(max_length=2048)
+    found_on    = models.URLField(max_length=2048)
+    status_code = models.PositiveSmallIntegerField(null=True, blank=True)  # None = timeout
+    anchor_text = models.CharField(max_length=512, blank=True)
+
+    class Meta:
+        unique_together = [('session', 'broken_url', 'found_on')]
+        ordering = ['broken_url']
+
+    def __str__(self):
+        return f'[{self.status_code}] {self.broken_url} ← {self.found_on}'
+
