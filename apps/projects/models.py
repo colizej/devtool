@@ -53,6 +53,12 @@ class Project(models.Model):
         verbose_name='Git Remote URL',
         help_text='Например: git@github.com:user/prava.git',
     )
+    admin_url = models.URLField(
+        max_length=500,
+        blank=True,
+        verbose_name='URL Admin панели',
+        help_text='Например: https://prava.be/admin/ или https://clikme.ru/admin/index.php',
+    )
     is_active = models.BooleanField(default=True, verbose_name='Активен')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
 
