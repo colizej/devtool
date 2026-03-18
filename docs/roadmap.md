@@ -1,7 +1,7 @@
 Markdown Preview EnhancedMarkdown Preview EnhancedMarkdown Preview Enhanced
 # Roadmap — AI SEO Dashboard
 
-**Дата:** 17 марта 2026
+**Дата:** 17 марта 2026 → обновлено 18 марта 2026
 **Подход:** итеративная разработка, каждый этап — рабочий продукт
 
 ---
@@ -194,54 +194,56 @@ Phase 5  │ Advanced Features      │ ongoing
 
 ---
 
-## Phase 4 — AI & Reports
+## Phase 4 — AI & Reports ✅ ЗАВЕРШЕНО (17–18.03.2026)
 
-> Цель: умные рекомендации на основе собранных данных + экспорт
+> Цель: умные рекомендации на основе собранных данных
 
 ### Задачи
 
-**AI Engine**
-- [ ] Выбор провайдера: **Gemini 1.5 Flash** (бесплатный tier, рекомендован) или OpenAI GPT-4o
-- [ ] Абстрактный интерфейс `AIProvider` — легко менять провайдера через `.env`
-- [ ] Модель `AIRecommendation` (project, url, rec_type, prompt, response, created_at, tokens_used)
-- [ ] Промпты для:
-  - Title/Description оптимизация (на основе GSC: позиция + CTR + топ-запросы)
-  - Анализ страницы с низким CTR
-  - Общий SEO-аудит проекта
+**AI Engine** ✅
+- [x] Провайдер: **Gemini 2.5 Flash** (`google-genai` SDK)
+- [x] Модель `AIRequest` (project, url, rec_type, prompt, response, created_at)
+- [x] `apps/ai/` — отдельное приложение
+- [x] Промпты: Title / Description / H1 оптимизация на основе GSC-данных + краулера
 
-**Примеры промптов:**
-```
-Prompt: SEO Title Optimizer
----
-Page URL: {url}
-Current title: {title}
-Impressions: {impressions}
-CTR: {ctr}%
-Position: {position}
-Top queries: {queries}
+**UI (AI-модал)** ✅
+- [x] Кнопка "AI Fix" в таблице краулера (для страниц с проблемами)
+- [x] Модал с вкладками: Title / Description / H1 — генерирует 3 варианта каждого
+- [x] Список SEO-проблем страницы отображается в заголовке модала (цветные бейджи)
+- [x] Кнопки "Открыть страницу" и "Открыть Admin" в подвале модала
+- [x] Копирование результата: `textarea` с `onclick="this.select()"`
+- [x] Пауза авто-рефреша краулера при открытом модале
 
-Suggest 3 improved title variants (max 60 chars) that would increase CTR.
-Explain why CTR is low.
-```
+**SEO Issues — улучшения** ✅
+- [x] **Upsert-логика** (`_upsert_issues()`): при повторном анализе сохраняются `status` и `note` — не затираются
+- [x] Статусы: Новая / Важно / В работе / Исправлено / Игнорировать
+- [x] Заметки к проблемам (inline через fetch без перезагрузки страницы)
 
-- [ ] Батч-обработка: не более 20 страниц за раз (контроль стоимости/квоты)
-- [ ] Хранение результатов в `AIRecommendation` модели
-- [ ] `apps/ai/` — отдельное приложение
-
-**Reports**
-- [ ] CSV экспорт: queries, pages, crawl results, issues
-- [ ] PDF отчёт по проекту (weekly summary) — `reportlab` или `weasyprint`
-- [ ] Еженедельный scheduler job: генерация отчёта
-
-**UI**
-- [ ] Вкладка AI Report: список рекомендаций по страницам (url, тип, текст)
-- [ ] Кнопка "Сгенерировать AI отчёт" — on-demand + прогресс
-- [ ] История рекомендаций с датами
-- [ ] Кнопка "Экспортировать CSV"
+**UI/UX — общие улучшения** ✅
+- [x] Все emoji заменены на SVG Heroicons
+- [x] Сортируемые заголовки таблицы краулера (все 6 колонок, SVG-иконки ↕/↑/↓)
+- [x] Тултип с полным текстом ячейки (кликабельный, Cmd+C)
+- [x] `admin_url` у проекта — прямая ссылка в Django-admin сайта
 
 ### Результат фазы
 
-Dashboard генерирует actionable рекомендации, exportable reports
+AI-модал работает на реальных данных. 194 страницы piecedetheatre.be проанализированы, кнопка "AI Fix" доступна для страниц с проблемами.
+
+---
+
+## Phase 4.1 — Crawler UX ✅ ЗАВЕРШЕНО (18.03.2026)
+
+> Багфиксы и улучшения краулера после реального использования
+
+- [x] **Кнопка "Остановить"** (красная) — сбрасывает зависший/активный сеанс краулера
+- [x] **`crawl_reset` view + URL** — `POST /crawler/reset/<session_id>/`
+- [x] **Race condition fix** — `refresh_from_db()` перед финальным save, чтобы не перезаписать `error` → `done`
+- [x] **Умный polling** вместо авто-рефреша по таймеру:
+  - каждые 5с запрашивает `/crawler/status/<id>/` (JSON endpoint)
+  - обновляет счётчик пройденных страниц в реальном времени
+  - перезагружает страницу только когда краулер завершился **И** модал закрыт
+  - при открытом AI-модале показывает "Краулер завершён — обновится после закрытия"
+- [x] Flash-сообщение при запуске убрало лишний текст "обновите через минуту"
 
 ---
 
@@ -249,17 +251,33 @@ Dashboard генерирует actionable рекомендации, exportable r
 
 > Расширения по необходимости
 
+### Вкладка AI Report (в разработке)
+- [ ] Сводный AI-отчёт по всему проекту (не по одной странице)
+- [ ] Экспорт отчёта (PDF / CSV / Markdown)
+- [ ] Еженедельный scheduler job: автогенерация отчёта
+
+### Вкладка Git Sync (в разработке)
+- [ ] Синхронизация с git-репозиторием сайта (`local_repo_path`)
+- [ ] Авто-применение AI-правок через git commit
+
+### Краулер — улучшения
+- [ ] Поиск по таблице результатов (поле в UI есть, логика не написана)
+- [ ] Сравнение двух сессий краулера (было / стало)
+- [ ] Пагинация или виртуальный скролл при 500+ страницах
+
+### SEO Issues — улучшения
+- [ ] Bulk-смена статуса (выбрать несколько → отметить как fixed)
+- [ ] Экспорт в CSV
+
+### Прочее
 | Фича | Описание |
 |---|---|
-| **🎨 Редизайн под цвета лого** | Извлечь доминирующие цвета из `static/logo.png` (Pillow), обновить CSS-переменные в `tailwind.css` и `base.html` — сайдбар, акцентные цвета, кнопки |
+| **🎨 Редизайн под цвета лого** | Извлечь доминирующие цвета из `static/logo.png` (Pillow), обновить CSS-переменные |
 | PageSpeed Insights API | Core Web Vitals: LCP, CLS, FID для каждой страницы |
 | Alerts система | Telegram-бот или email при резком падении трафика/позиций |
-| Bing Webmaster Tools | Дополнительный источник поисковых данных |
-| Ahrefs API | Backlinks, Domain Rating |
 | Multi-user | Аутентификация для команды, роли admin/viewer |
-| Server deploy | Docker Compose на VPS, nginx, HTTPS |
+| Server deploy | Docker Compose на VPS, nginx, HTTPS, PostgreSQL, Celery + Redis |
 | Mobile-responsive UI | Адаптивная версия dashboard |
-| Competitive analysis | Сравнение позиций с конкурентами |
 
 ---
 
