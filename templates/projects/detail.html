@@ -452,7 +452,13 @@
       <div><span class="text-gray-400">Запущен</span> <span class="ml-1 text-gray-600">{{ crawl_session.started_at|date:"d.m.Y H:i" }}</span></div>
       {% if crawl_session.duration_seconds %}<div><span class="text-gray-400">Время</span> <span class="ml-1 text-gray-600">{{ crawl_session.duration_seconds }}с</span></div>{% endif %}
       {% if crawl_session.status == 'running' %}
-      <div class="text-blue-600 text-xs">↻ Обновите страницу для актуального статуса</div>
+      <div class="text-blue-600 text-xs flex items-center gap-1">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        Страница автообновится через 30с…
+      </div>
+      {% endif %}
+      {% if crawl_session.error_message %}
+      <div class="text-xs text-red-500">{{ crawl_session.error_message }}</div>
       {% endif %}
     </div>
 
@@ -792,6 +798,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const oEl = document.getElementById('ok-count');
   if (wEl) wEl.textContent = warn;
   if (oEl) oEl.textContent = ok;
+
+  // Авто-обновление страницы пока краулер работает
+  {% if crawl_session and crawl_session.status == 'running' %}
+  setTimeout(() => location.reload(), 30000);
+  {% endif %}
 });
 
 // ── Сортировка таблицы краулера ──────────────────────────────────────────
