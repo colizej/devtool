@@ -131,7 +131,7 @@ def _build_gsc_block(gsc_queries: list) -> str:
 # ─── Client ───────────────────────────────────────────────────────────────────
 
 class GeminiClient:
-    MODEL = 'gemini-1.5-flash'
+    MODEL = 'gemini-2.5-flash'
 
     def __init__(self):
         api_key = config('GEMINI_API_KEY', default='')
