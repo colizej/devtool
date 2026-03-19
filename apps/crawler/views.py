@@ -50,11 +50,20 @@ def crawl_start(request, project_id):
         messages.warning(request, f'Краулер для «{project.name}» уже запущен.')
         return redirect(f'/project/{project.slug}/?tab=crawler')
 
-    session = CrawlSession.objects.create(project=project)
+    mode = request.POST.get('mode', 'links')
+    if mode not in ('links', 'sitemap'):
+        mode = 'links'
+
+    if mode == 'sitemap' and not project.sitemap_url:
+        messages.error(request, 'У проекта не указан sitemap_url — используется обход по ссылкам.')
+        mode = 'links'
+
+    session = CrawlSession.objects.create(project=project, mode=mode)
     thread = threading.Thread(target=_run_crawl, args=(project, session), daemon=True)
     thread.start()
 
-    messages.success(request, f'Краулер запущен для «{project.name}».')
+    mode_label = 'по sitemap' if mode == 'sitemap' else 'по ссылкам'
+    messages.success(request, f'Краулер запущен для «{project.name}» ({mode_label}).')
     return redirect(f'/project/{project.slug}/?tab=crawler')
 
 

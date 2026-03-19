@@ -9,7 +9,12 @@ class CrawlSession(models.Model):
         ('done',    'Завершён'),
         ('error',   'Ошибка'),
     ]
+    MODE_CHOICES = [
+        ('links',   'Обход по ссылкам'),
+        ('sitemap', 'По sitemap.xml'),
+    ]
     project      = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='crawl_sessions')
+    mode         = models.CharField(max_length=10, choices=MODE_CHOICES, default='links')
     started_at   = models.DateTimeField(auto_now_add=True)
     finished_at  = models.DateTimeField(null=True, blank=True)
     status       = models.CharField(max_length=10, choices=STATUS_CHOICES, default='running')

@@ -20,7 +20,40 @@ HEADERS = {
 }
 REQUEST_TIMEOUT = 15
 CRAWL_DELAY = 1.0        # секунд между запросами
-MAX_PAGES = 500          # лимит страниц за сессию
+MAX_PAGES = 500          # лимит страниц за сессию (режим links)
+
+
+def _parse_sitemap(sitemap_url: str) -> list[str]:
+    """Рекурсивно парсит sitemap.xml (включая sitemapindex).
+    Возвращает список URL страниц."""
+    urls = []
+    try:
+        resp = httpx.get(sitemap_url, headers=HEADERS, timeout=15,
+                         follow_redirects=True, verify=False)
+        if resp.status_code != 200:
+            logger.warning('Sitemap fetch failed: %s → %d', sitemap_url, resp.status_code)
+            return urls
+        text = resp.text
+        # sitemapindex — содержит ссылки на другие sitemaps
+        if '<sitemapindex' in text:
+            from xml.etree import ElementTree as ET
+            root = ET.fromstring(text)
+            ns = {'sm': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+            for loc in root.findall('sm:sitemap/sm:loc', ns):
+                child_url = loc.text.strip() if loc.text else ''
+                if child_url:
+                    urls.extend(_parse_sitemap(child_url))
+        else:
+            from xml.etree import ElementTree as ET
+            root = ET.fromstring(text)
+            ns = {'sm': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+            for loc in root.findall('sm:url/sm:loc', ns):
+                page_url = loc.text.strip() if loc.text else ''
+                if page_url:
+                    urls.append(page_url)
+    except Exception as e:
+        logger.error('Sitemap parse error %s: %s', sitemap_url, e)
+    return urls
 
 
 def _get_robots(base_url: str) -> RobotFileParser:
@@ -136,32 +169,49 @@ def crawl_site(project, session) -> int:
     """
     Краулит сайт проекта. Возвращает количество проползённых страниц.
     Сохраняет результаты в CrawlResult и BrokenLink.
+    Режим определяется session.mode: 'links' (обход по ссылкам) или 'sitemap'.
     """
     from apps.crawler.models import CrawlResult, BrokenLink
 
-    # Normalize domain: strip any existing scheme so we always build a clean URL
+    # Normalize domain
     domain = project.domain
     if '://' in domain:
         domain = domain.split('://', 1)[1]
     domain = domain.rstrip('/')
     base_url = f'https://{domain}'
     robots = _get_robots(base_url)
-    # Уважаем Crawl-delay из robots.txt — берём максимум из нашей настройки и директивы
     robots_delay = robots.crawl_delay('*') or robots.crawl_delay('SEODashboardBot')
     effective_delay = max(CRAWL_DELAY, float(robots_delay)) if robots_delay else CRAWL_DELAY
     if effective_delay > CRAWL_DELAY:
-        logger.info('robots.txt Crawl-delay: %.1fs (our default: %.1fs) — using %.1fs',
-                    robots_delay, CRAWL_DELAY, effective_delay)
+        logger.info('robots.txt Crawl-delay: %.1fs — using %.1fs', robots_delay, effective_delay)
+
+    # Формируем очередь в зависимости от режима
+    mode = getattr(session, 'mode', 'links')
+    if mode == 'sitemap' and project.sitemap_url:
+        logger.info('Crawl mode: sitemap — fetching %s', project.sitemap_url)
+        raw_urls = _parse_sitemap(project.sitemap_url)
+        # Нормализуем и фильтруем только свой домен
+        queue = [
+            _normalize_url(u) for u in raw_urls
+            if _is_same_domain(u, base_url)
+        ]
+        # Без лимита MAX_PAGES для sitemap-режима (сайт сам определил объём)
+        max_pages = len(queue)
+        logger.info('Sitemap mode: %d URLs found', max_pages)
+        if not queue:
+            raise ValueError(f'Sitemap пуст или URL не с домена {domain}: {project.sitemap_url}')
+    else:
+        queue = [_normalize_url(base_url + '/')]
+        max_pages = MAX_PAGES
 
     visited = set()
-    queue = [_normalize_url(base_url + '/')]
     count = 0
     # source_map: broken_url -> list of (found_on, anchor_text, status_code)
     link_sources: dict[str, list[tuple[str, str, int | None]]] = {}
 
     with httpx.Client(headers=HEADERS, timeout=REQUEST_TIMEOUT,
                       follow_redirects=True, verify=False) as client:
-        while queue and count < MAX_PAGES:
+        while queue and count < max_pages:
             url = queue.pop(0)
             if url in visited:
                 continue
