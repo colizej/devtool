@@ -146,6 +146,12 @@ def crawl_site(project, session) -> int:
     domain = domain.rstrip('/')
     base_url = f'https://{domain}'
     robots = _get_robots(base_url)
+    # Уважаем Crawl-delay из robots.txt — берём максимум из нашей настройки и директивы
+    robots_delay = robots.crawl_delay('*') or robots.crawl_delay('SEODashboardBot')
+    effective_delay = max(CRAWL_DELAY, float(robots_delay)) if robots_delay else CRAWL_DELAY
+    if effective_delay > CRAWL_DELAY:
+        logger.info('robots.txt Crawl-delay: %.1fs (our default: %.1fs) — using %.1fs',
+                    robots_delay, CRAWL_DELAY, effective_delay)
 
     visited = set()
     queue = [_normalize_url(base_url + '/')]
@@ -205,6 +211,7 @@ def crawl_site(project, session) -> int:
                     link_sources[url] = [(s, a, None) for s, a, _ in link_sources[url]]
             except Exception as e:
                 logger.error('Crawl error %s: %s', url, e)
+                time.sleep(effective_delay)  # задержка даже при ошибке
                 continue
 
             # Обновляем финальный status_code в link_sources
@@ -237,7 +244,7 @@ def crawl_site(project, session) -> int:
                 session.pages_found = len(visited) + len(queue)
                 session.save(update_fields=['pages_crawled', 'pages_found'])
 
-            time.sleep(CRAWL_DELAY)
+            time.sleep(effective_delay)
 
     # Сохраняем битые ссылки: только те URL которые оказались broken
     broken_results = set(
