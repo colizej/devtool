@@ -79,10 +79,21 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
         'OPTIONS': {
-            'timeout': 20,  # секунд ожидания при блокировке (database is locked)
+            'timeout': 30,  # секунд ожидания при блокировке
         },
     }
 }
+
+# Включаем WAL-режим SQLite при старте — снижает конфликты при параллельных записях
+from django.db.backends.signals import connection_created
+
+def _set_wal_mode(sender, connection, **kwargs):
+    if connection.vendor == 'sqlite':
+        connection.cursor().execute('PRAGMA journal_mode=WAL;')
+        connection.cursor().execute('PRAGMA synchronous=NORMAL;')
+        connection.cursor().execute('PRAGMA busy_timeout=30000;')  # 30с в мс
+
+connection_created.connect(_set_wal_mode)
 
 
 # Password validation
